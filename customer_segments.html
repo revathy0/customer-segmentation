@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customer Floor — Mall Segmentation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --abyss: #120e1a;
+    --deep: #1a1326;
+    --panel: #201933;
+    --panel-2: #251d3a;
+    --line: #362a4a;
+    --ink: #f5f0f9;
+    --ink-dim: #b3a2c7;
+    --ink-faint: #6f5f85;
+
+    --c0: #8f8fd9; /* standard */
+    --c1: #f2b134; /* premium */
+    --c2: #4fb0c9; /* reserved */
+    --c3: #6fbf8b; /* budget */
+    --c4: #e0577a; /* impulsive */
+
+    --radius: 3px;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html,body{
+    margin:0; padding:0;
+    background: var(--abyss);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    background-image:
+      radial-gradient(ellipse 120% 55% at 50% -5%, #241a36 0%, var(--abyss) 55%),
+      radial-gradient(ellipse 70% 45% at 85% 100%, #1c1430 0%, transparent 60%);
+    overflow-x: hidden;
+  }
+
+  h1,h2,h3,.display{ font-family: 'Fraunces', serif; }
+
+  .wrap{
+    position: relative;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ---------- Hero ---------- */
+
+  .hero{ padding-top: 48px; text-align: center; }
+
+  .hero-label{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+
+  .hero h1{
+    font-size: clamp(28px, 5vw, 46px);
+    font-weight: 500;
+    font-style: italic;
+    line-height: 1.15;
+    margin: 0 0 12px;
+  }
+
+  .hero p.sub{
+    max-width: 520px;
+    margin: 0 auto 30px;
+    color: var(--ink-dim);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ---------- Floor plan / scatter ---------- */
+
+  .floor-frame{
+    position: relative;
+    background: linear-gradient(180deg, var(--panel), var(--deep));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+
+  #floor-canvas{
+    width: 100%;
+    height: 420px;
+    display: block;
+    cursor: grab;
+    touch-action: none;
+    border-radius: 2px;
+  }
+  #floor-canvas.dragging{ cursor: grabbing; }
+
+  .floor-readout{
+    display: flex;
+    justify-content: center;
+    gap: 22px;
+    margin-top: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    flex-wrap: wrap;
+  }
+  .floor-readout span b{ color: var(--ink-dim); font-weight: 500; }
+  .floor-readout .seg-b{ font-weight: 600; }
+
+  .floor-hint{
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    margin-top: 12px;
+  }
+
+  .run-row{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 22px;
+  }
+
+  button{
+    font-family: 'Inter', sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  }
+  button:hover{ background: #2c2244; border-color: #473564; }
+  button:active{ transform: translateY(1px); }
+
+  button.primary{
+    background: var(--c1);
+    border-color: var(--c1);
+    color: #241705;
+    font-weight: 600;
+    padding: 11px 24px;
+    font-size: 14.5px;
+  }
+  button.primary:hover{ background: #f4bf52; }
+
+  /* ---------- Sections ---------- */
+
+  section{ margin-top: 60px; }
+
+  .section-head{
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 14px;
+  }
+  .section-head h2{
+    font-size: 19px;
+    font-weight: 500;
+    font-style: italic;
+    margin: 0;
+  }
+  .section-head .hint{
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    text-align: right;
+  }
+
+  /* ---------- Result card ---------- */
+
+  #results{
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.5s ease, max-height 0.6s ease;
+  }
+  #results.show{ opacity: 1; max-height: 1400px; }
+
+  .verdict{
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 26px;
+    margin-top: 8px;
+  }
+  .verdict-swatch{
+    flex: none;
+    width: 84px; height: 84px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+  .verdict-text h3{ margin: 0 0 4px; font-size: 22px; font-weight: 500; font-style: italic; }
+  .verdict-text p{ margin: 0; font-size: 13.5px; color: var(--ink-dim); line-height: 1.55; max-width: 520px; }
+
+  .compare-grid{
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .compare-cell{
+    background: var(--panel);
+    padding: 16px;
+    text-align: center;
+  }
+  .compare-cell .lab{ font-size: 11px; color: var(--ink-faint); margin-bottom: 6px; }
+  .compare-cell .val{ font-family: 'IBM Plex Mono', monospace; font-size: 16px; color: var(--ink); }
+  .compare-cell .seg-avg{ font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
+
+  .affinity-panel{
+    margin-top: 20px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 24px 8px;
+  }
+  .affinity-panel h4{ margin: 0 0 4px; font-size: 14.5px; font-weight: 600; font-family: 'Inter', sans-serif; }
+  .affinity-panel .desc{ font-size: 12.5px; color: var(--ink-faint); margin: 0 0 18px; }
+
+  .affinity-row{
+    display: grid;
+    grid-template-columns: 110px 1fr 44px;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 12.5px;
+  }
+  .affinity-row .name{ display: flex; align-items: center; gap: 7px; color: var(--ink-dim); }
+  .affinity-row .dot{ width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .affinity-track{ position: relative; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .affinity-fill{ position: absolute; left: 0; top: 0; height: 100%; border-radius: 4px; }
+  .affinity-val{ text-align: right; font-family: 'IBM Plex Mono', monospace; color: var(--ink-dim); }
+
+  /* ---------- Persona legend ---------- */
+
+  .persona-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .persona-card{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--c);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .persona-card .p-head{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .persona-card .p-name{ font-size: 15px; font-weight: 600; color: var(--c); }
+  .persona-card .p-n{ font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink-faint); }
+  .persona-card .p-desc{ font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; margin: 0 0 12px; }
+  .persona-card .p-stats{
+    display: flex;
+    gap: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+  }
+  .persona-card .p-stats b{ color: var(--ink-dim); font-weight: 500; }
+  .gender-bar{
+    margin-top: 10px;
+    height: 5px;
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+    background: var(--line);
+  }
+  .gender-bar .f{ background: #cf8fb8; }
+  .gender-bar .m{ background: #6f8fc9; }
+
+  /* ---------- Elbow chart ---------- */
+
+  .elbow-panel{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 20px 12px;
+  }
+  #elbow-canvas{ width: 100%; height: 160px; display: block; }
+  .elbow-note{ font-size: 12px; color: var(--ink-faint); margin: 10px 2px 0; line-height: 1.5; }
+
+  /* ---------- Stats footer ---------- */
+
+  .stats-strip{
+    margin-top: 60px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .stat-cell{ background: var(--deep); padding: 18px 16px; text-align: center; }
+  .stat-cell .num{ font-family: 'IBM Plex Mono', monospace; font-size: 21px; font-weight: 600; color: var(--ink); }
+  .stat-cell .lab{ font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
+
+  footer{
+    text-align: center;
+    margin-top: 40px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 560px){
+    .stats-strip{ grid-template-columns: repeat(2, 1fr); }
+    .compare-grid{ grid-template-columns: 1fr; }
+    .verdict{ flex-direction: column; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="hero">
+    <p class="hero-label">CUSTOMER SEGMENTATION · K-MEANS</p>
+    <h1>Where does this shopper belong?</h1>
+    <p class="sub">Place a customer on the floor below by their annual income and spending score, and a k-means model trained on 200 real mall customers will place them in one of five segments.</p>
+  </div>
+
+  <section id="floor-section">
+    <div class="floor-frame">
+      <canvas id="floor-canvas"></canvas>
+      <div class="floor-readout">
+        <span>INCOME <b id="ro-income">$60k</b></span>
+        <span>SPENDING SCORE <b id="ro-spend">50</b></span>
+        <span>NEAREST SEGMENT <b class="seg-b" id="ro-segment">—</b></span>
+      </div>
+    </div>
+    <p class="floor-hint">Drag the marker anywhere on the floor — it snaps to the nearest segment as you move it.</p>
+
+    <div class="run-row">
+      <button id="btn-run" class="primary">Save this profile</button>
+    </div>
+  </section>
+
+  <section id="results-section">
+    <div id="results">
+      <div class="section-head">
+        <h2>Segment match</h2>
+        <div class="hint" id="hint-dist"></div>
+      </div>
+
+      <div class="verdict">
+        <div class="verdict-swatch" id="verdict-swatch"></div>
+        <div class="verdict-text">
+          <h3 id="verdict-title">—</h3>
+          <p id="verdict-desc">—</p>
+        </div>
+      </div>
+
+      <div class="compare-grid">
+        <div class="compare-cell">
+          <div class="lab">ANNUAL INCOME</div>
+          <div class="val" id="cmp-income">—</div>
+          <div class="seg-avg" id="cmp-income-avg">segment avg —</div>
+        </div>
+        <div class="compare-cell">
+          <div class="lab">SPENDING SCORE</div>
+          <div class="val" id="cmp-spend">—</div>
+          <div class="seg-avg" id="cmp-spend-avg">segment avg —</div>
+        </div>
+        <div class="compare-cell">
+          <div class="lab">SEGMENT SIZE</div>
+          <div class="val" id="cmp-size">—</div>
+          <div class="seg-avg" id="cmp-size-pct">of 200 customers</div>
+        </div>
+      </div>
+
+      <div class="affinity-panel">
+        <h4>Closeness to every segment</h4>
+        <p class="desc">How near this profile sits to each of the five cluster centers.</p>
+        <div id="affinity-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="persona-section">
+    <div class="section-head">
+      <h2>The five segments</h2>
+      <div class="hint">200 customers, grouped by income &amp; spending</div>
+    </div>
+    <div class="persona-grid" id="persona-grid"></div>
+  </section>
+
+  <section id="elbow-section">
+    <div class="section-head">
+      <h2>Why five?</h2>
+      <div class="hint">the elbow method</div>
+    </div>
+    <div class="elbow-panel">
+      <canvas id="elbow-canvas"></canvas>
+      <p class="elbow-note">Within-cluster sum of squares drops sharply up to k=5, then flattens — adding a sixth segment buys little extra separation, so five is the model's chosen number of clusters.</p>
+    </div>
+  </section>
+
+  <div class="stats-strip">
+    <div class="stat-cell"><div class="num">200</div><div class="lab">customers clustered</div></div>
+    <div class="stat-cell"><div class="num">5</div><div class="lab">segments (k-means++)</div></div>
+    <div class="stat-cell"><div class="num">0.554</div><div class="lab">silhouette score</div></div>
+    <div class="stat-cell"><div class="num">2</div><div class="lab">features: income, spend</div></div>
+  </div>
+
+  <footer>
+    K-means clustering trained on the Mall Customer Segmentation dataset — annual income and spending score for 200 shoppers.<br>
+    A demonstration model for exploring the segments, not a live customer record.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ Embedded model ============ */
+  const CENTERS = [
+    [55.29629629629632, 49.51851851851852],
+    [86.53846153846155, 82.12820512820511],
+    [88.20000000000002, 17.1142857142857],
+    [26.304347826086982, 20.913043478260867],
+    [25.727272727272755, 79.36363636363636]
+  ];
+
+  const WCSS = [269981.3,183653.3,106348.4,73880.6,44448.5,40825.2,33642.6,26686.8,24766.5,23103.1];
+
+  const PERSONAS = [
+    { id:0, name:'Standard', color:'var(--c0)', hex:'#8f8fd9', n:81, income:55.3, spend:49.5, age:42.7, male:33, female:48,
+      desc:'Average earners, average spenders — the steady middle of the mall\u2019s customer base.' },
+    { id:1, name:'Premium', color:'var(--c1)', hex:'#f2b134', n:39, income:86.5, spend:82.1, age:32.7, male:18, female:21,
+      desc:'High earners who spend just as freely. The highest-value shoppers on the floor.' },
+    { id:2, name:'Reserved', color:'var(--c2)', hex:'#4fb0c9', n:35, income:88.2, spend:17.1, age:41.1, male:19, female:16,
+      desc:'High earners who hold back. Plenty of money to spend, but rarely do.' },
+    { id:3, name:'Budget', color:'var(--c3)', hex:'#6fbf8b', n:23, income:26.3, spend:20.9, age:45.2, male:9, female:14,
+      desc:'Modest income, modest spending. Careful with every purchase.' },
+    { id:4, name:'Impulsive', color:'var(--c4)', hex:'#e0577a', n:22, income:25.7, spend:79.4, age:25.3, male:9, female:13,
+      desc:'Limited income but high spending. Younger shoppers chasing trends over budgets.' }
+  ];
+
+  // real customer points: [income, spend, clusterId]
+  const POINTS = [[15,39,3],[15,81,4],[16,6,3],[16,77,4],[17,40,3],[17,76,4],[18,6,3],[18,94,4],[19,3,3],[19,72,4],[19,14,3],[19,99,4],[20,15,3],[20,77,4],[20,13,3],[20,79,4],[21,35,3],[21,66,4],[23,29,3],[23,98,4],[24,35,3],[24,73,4],[25,5,3],[25,73,4],[28,14,3],[28,82,4],[28,32,3],[28,61,4],[29,31,3],[29,87,4],[30,4,3],[30,73,4],[33,4,3],[33,92,4],[33,14,3],[33,81,4],[34,17,3],[34,73,4],[37,26,3],[37,75,4],[38,35,3],[38,92,4],[39,36,3],[39,61,0],[39,28,3],[39,65,4],[40,55,0],[40,47,0],[40,42,0],[40,42,0],[42,52,0],[42,60,0],[43,54,0],[43,60,0],[43,45,0],[43,41,0],[44,50,0],[44,46,0],[46,51,0],[46,46,0],[46,56,0],[46,55,0],[47,52,0],[47,59,0],[48,51,0],[48,59,0],[48,50,0],[48,48,0],[48,59,0],[48,47,0],[49,55,0],[49,42,0],[50,49,0],[50,56,0],[54,47,0],[54,54,0],[54,53,0],[54,48,0],[54,52,0],[54,42,0],[54,51,0],[54,55,0],[54,41,0],[54,44,0],[54,57,0],[54,46,0],[57,58,0],[57,55,0],[58,60,0],[58,46,0],[59,55,0],[59,41,0],[60,49,0],[60,40,0],[60,42,0],[60,52,0],[60,47,0],[60,50,0],[61,42,0],[61,49,0],[62,41,0],[62,48,0],[62,59,0],[62,55,0],[62,56,0],[62,42,0],[63,50,0],[63,46,0],[63,43,0],[63,48,0],[63,52,0],[63,54,0],[64,42,0],[64,46,0],[65,48,0],[65,50,0],[65,43,0],[65,59,0],[67,43,0],[67,57,0],[67,56,0],[67,40,0],[69,58,0],[69,91,1],[70,29,2],[70,77,1],[71,35,0],[71,95,1],[71,11,2],[71,75,1],[71,9,2],[71,75,1],[72,34,0],[72,71,1],[73,5,2],[73,88,1],[73,7,2],[73,73,1],[74,10,2],[74,72,1],[75,5,2],[75,93,1],[76,40,0],[76,87,1],[77,12,2],[77,97,1],[77,36,2],[77,74,1],[78,22,2],[78,90,1],[78,17,2],[78,88,1],[78,20,2],[78,76,1],[78,16,2],[78,89,1],[78,1,2],[78,78,1],[78,1,2],[78,73,1],[79,35,2],[79,83,1],[81,5,2],[81,93,1],[85,26,2],[85,75,1],[86,20,2],[86,95,1],[87,27,2],[87,63,1],[87,13,2],[87,75,1],[87,10,2],[87,92,1],[88,13,2],[88,86,1],[88,15,2],[88,69,1],[93,14,2],[93,90,1],[97,32,2],[97,86,1],[98,15,2],[98,88,1],[99,39,2],[99,97,1],[101,24,2],[101,68,1],[103,17,2],[103,85,1],[103,23,2],[103,69,1],[113,8,2],[113,91,1],[120,16,2],[120,79,1],[126,28,2],[126,74,1],[137,18,2],[137,83,1]];
+
+  const INCOME_MIN=0, INCOME_MAX=140, SPEND_MIN=0, SPEND_MAX=100;
+  const PAD = { l:44, r:14, t:14, b:30 };
+
+  function nearestCluster(income, spend){
+    let best=0, bestD=Infinity, dists=[];
+    for(let i=0;i<CENTERS.length;i++){
+      const dx = income-CENTERS[i][0], dy = spend-CENTERS[i][1];
+      const d = Math.sqrt(dx*dx+dy*dy);
+      dists.push(d);
+      if(d<bestD){ bestD=d; best=i; }
+    }
+    return {cluster:best, dist:bestD, dists};
+  }
+
+  /* ============ Floor canvas ============ */
+  const canvas = document.getElementById('floor-canvas');
+  const ctx = canvas.getContext('2d');
+  let rectW=0, rectH=0, dpr=1;
+  let marker = {income:60, spend:50};
+  let pulse = 0;
+
+  function fit(){
+    const rect = canvas.getBoundingClientRect();
+    rectW = rect.width; rectH = rect.height;
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = rectW*dpr; canvas.height = rectH*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    buildRegionGrid();
+  }
+
+  function dataToPx(income, spend){
+    const cw = rectW-PAD.l-PAD.r, ch = rectH-PAD.t-PAD.b;
+    const x = PAD.l + (income-INCOME_MIN)/(INCOME_MAX-INCOME_MIN)*cw;
+    const y = PAD.t + ch - (spend-SPEND_MIN)/(SPEND_MAX-SPEND_MIN)*ch;
+    return {x,y};
+  }
+  function pxToData(x, y){
+    const cw = rectW-PAD.l-PAD.r, ch = rectH-PAD.t-PAD.b;
+    const income = INCOME_MIN + (x-PAD.l)/cw*(INCOME_MAX-INCOME_MIN);
+    const spend = SPEND_MIN + (ch-(y-PAD.t))/ch*(SPEND_MAX-SPEND_MIN);
+    return {
+      income: Math.max(INCOME_MIN, Math.min(INCOME_MAX, income)),
+      spend: Math.max(SPEND_MIN, Math.min(SPEND_MAX, spend))
+    };
+  }
+
+  let regionGrid = null; // cached ImageData-free block list
+  const BLOCK = 9;
+  function buildRegionGrid(){
+    const cw = rectW-PAD.l-PAD.r, ch = rectH-PAD.t-PAD.b;
+    regionGrid = [];
+    for(let py=0; py<ch; py+=BLOCK){
+      for(let px=0; px<cw; px+=BLOCK){
+        const d = pxToData(PAD.l+px+BLOCK/2, PAD.t+py+BLOCK/2);
+        const nc = nearestCluster(d.income, d.spend).cluster;
+        regionGrid.push({x:PAD.l+px, y:PAD.t+py, cluster:nc});
+      }
+    }
+  }
+
+  function getCssColor(varName){
+    return getComputedStyle(document.documentElement).getPropertyValue(varName.replace('var(--','').replace(')','')).trim();
+  }
+  const CLUSTER_HEX = PERSONAS.map(p=>p.hex);
+
+  function hexToRgba(hex, a){
+    const v = hex.replace('#','');
+    const r = parseInt(v.substring(0,2),16), g = parseInt(v.substring(2,4),16), b = parseInt(v.substring(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,rectW,rectH);
+
+    // region shading
+    if(regionGrid){
+      for(const cell of regionGrid){
+        ctx.fillStyle = hexToRgba(CLUSTER_HEX[cell.cluster], 0.13);
+        ctx.fillRect(cell.x, cell.y, BLOCK+0.6, BLOCK+0.6);
+      }
+    }
+
+    // gridlines + axis labels
+    ctx.strokeStyle = 'rgba(54,42,74,0.9)';
+    ctx.fillStyle = '#6f5f85';
+    ctx.font = '10.5px IBM Plex Mono, monospace';
+    ctx.lineWidth = 1;
+
+    const cw = rectW-PAD.l-PAD.r, ch = rectH-PAD.t-PAD.b;
+    for(let inc=0; inc<=INCOME_MAX; inc+=20){
+      const p = dataToPx(inc, SPEND_MIN);
+      ctx.beginPath(); ctx.moveTo(p.x, PAD.t); ctx.lineTo(p.x, PAD.t+ch); ctx.stroke();
+      ctx.fillText(inc, p.x-8, rectH-10);
+    }
+    for(let sp=0; sp<=SPEND_MAX; sp+=20){
+      const p = dataToPx(INCOME_MIN, sp);
+      ctx.beginPath(); ctx.moveTo(PAD.l, p.y); ctx.lineTo(PAD.l+cw, p.y); ctx.stroke();
+      ctx.fillText(sp, 6, p.y+3);
+    }
+
+    // real customer points
+    for(const pt of POINTS){
+      const p = dataToPx(pt[0], pt[1]);
+      ctx.fillStyle = hexToRgba(CLUSTER_HEX[pt[2]], 0.65);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.6, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // centroids
+    for(let i=0;i<CENTERS.length;i++){
+      const p = dataToPx(CENTERS[i][0], CENTERS[i][1]);
+      ctx.strokeStyle = CLUSTER_HEX[i];
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 7, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.fillStyle = hexToRgba(CLUSTER_HEX[i], 0.9);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.2, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // line + halo from marker to nearest centroid
+    const near = nearestCluster(marker.income, marker.spend);
+    const mp = dataToPx(marker.income, marker.spend);
+    const cp = dataToPx(CENTERS[near.cluster][0], CENTERS[near.cluster][1]);
+
+    ctx.strokeStyle = hexToRgba(CLUSTER_HEX[near.cluster], 0.55);
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([3,4]);
+    ctx.beginPath();
+    ctx.moveTo(mp.x, mp.y); ctx.lineTo(cp.x, cp.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // pulsing halo on target centroid
+    const haloR = 10 + (Math.sin(pulse)+1)*6;
+    ctx.strokeStyle = hexToRgba(CLUSTER_HEX[near.cluster], 0.35);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cp.x, cp.y, haloR, 0, Math.PI*2);
+    ctx.stroke();
+    pulse += 0.06;
+
+    // marker
+    ctx.fillStyle = '#f5f0f9';
+    ctx.beginPath();
+    ctx.arc(mp.x, mp.y, 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = CLUSTER_HEX[near.cluster];
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(mp.x, mp.y, 9.5, 0, Math.PI*2);
+    ctx.stroke();
+
+    // live readout
+    document.getElementById('ro-income').textContent = '$' + Math.round(marker.income) + 'k';
+    document.getElementById('ro-spend').textContent = Math.round(marker.spend);
+    const segEl = document.getElementById('ro-segment');
+    segEl.textContent = PERSONAS[near.cluster].name;
+    segEl.style.color = CLUSTER_HEX[near.cluster];
+
+    requestAnimationFrame(draw);
+  }
+
+  /* ============ Drag interaction ============ */
+  let dragging = false;
+  function pointerPos(e){
+    const rect = canvas.getBoundingClientRect();
+    if(e.touches && e.touches[0]) return {x: e.touches[0].clientX-rect.left, y: e.touches[0].clientY-rect.top};
+    return {x: e.clientX-rect.left, y: e.clientY-rect.top};
+  }
+  function startDrag(e){
+    dragging = true;
+    canvas.classList.add('dragging');
+    const p = pointerPos(e);
+    const d = pxToData(p.x, p.y);
+    marker = d;
+    e.preventDefault();
+  }
+  function moveDrag(e){
+    if(!dragging) return;
+    const p = pointerPos(e);
+    const d = pxToData(p.x, p.y);
+    marker = d;
+    e.preventDefault();
+  }
+  function endDrag(){ dragging = false; canvas.classList.remove('dragging'); }
+
+  canvas.addEventListener('mousedown', startDrag);
+  window.addEventListener('mousemove', moveDrag);
+  window.addEventListener('mouseup', endDrag);
+  canvas.addEventListener('touchstart', startDrag, {passive:false});
+  canvas.addEventListener('touchmove', moveDrag, {passive:false});
+  canvas.addEventListener('touchend', endDrag);
+
+  window.addEventListener('resize', fit);
+  fit();
+  draw();
+
+  /* ============ Save profile / results ============ */
+  document.getElementById('btn-run').addEventListener('click', ()=>{
+    const near = nearestCluster(marker.income, marker.spend);
+    const persona = PERSONAS[near.cluster];
+
+    document.getElementById('verdict-swatch').style.background = hexToRgba(persona.hex, 0.15);
+    document.getElementById('verdict-swatch').style.borderColor = persona.hex;
+    document.getElementById('verdict-title').textContent = persona.name + ' segment';
+    document.getElementById('verdict-title').style.color = persona.hex;
+    document.getElementById('verdict-desc').textContent = persona.desc;
+
+    document.getElementById('hint-dist').textContent = `distance to center = ${near.dist.toFixed(1)}`;
+
+    document.getElementById('cmp-income').textContent = '$' + Math.round(marker.income) + 'k';
+    document.getElementById('cmp-income-avg').textContent = 'segment avg $' + persona.income.toFixed(0) + 'k';
+    document.getElementById('cmp-spend').textContent = Math.round(marker.spend);
+    document.getElementById('cmp-spend-avg').textContent = 'segment avg ' + persona.spend.toFixed(0);
+    document.getElementById('cmp-size').textContent = persona.n;
+    document.getElementById('cmp-size-pct').textContent = Math.round(persona.n/200*100) + '% of 200 customers';
+
+    // affinity list
+    const maxD = Math.max(...near.dists);
+    const affinities = PERSONAS.map((p,i)=>({p, aff: 1 - near.dists[i]/ (maxD*1.05)}));
+    const list = document.getElementById('affinity-list');
+    list.innerHTML = '';
+    affinities
+      .slice()
+      .sort((a,b)=>b.aff-a.aff)
+      .forEach(({p, aff})=>{
+        const row = document.createElement('div');
+        row.className = 'affinity-row';
+        const pctW = Math.max(3, aff*100);
+        row.innerHTML = `
+          <div class="name"><span class="dot" style="background:${p.hex}"></span>${p.name}</div>
+          <div class="affinity-track"><div class="affinity-fill" style="width:${pctW}%;background:${p.hex}"></div></div>
+          <div class="affinity-val">${Math.round(aff*100)}%</div>
+        `;
+        list.appendChild(row);
+      });
+
+    document.getElementById('results').classList.add('show');
+    document.getElementById('results-section').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+
+  /* ============ Persona legend ============ */
+  const grid = document.getElementById('persona-grid');
+  PERSONAS.forEach(p=>{
+    const card = document.createElement('div');
+    card.className = 'persona-card';
+    card.style.setProperty('--c', p.hex);
+    const total = p.male+p.female;
+    const fPct = Math.round(p.female/total*100);
+    card.innerHTML = `
+      <div class="p-head">
+        <span class="p-name">${p.name}</span>
+        <span class="p-n">n = ${p.n}</span>
+      </div>
+      <p class="p-desc">${p.desc}</p>
+      <div class="p-stats">
+        <span>income <b>$${p.income.toFixed(0)}k</b></span>
+        <span>spend <b>${p.spend.toFixed(0)}</b></span>
+        <span>age <b>${p.age.toFixed(0)}</b></span>
+      </div>
+      <div class="gender-bar">
+        <div class="f" style="width:${fPct}%"></div>
+        <div class="m" style="width:${100-fPct}%"></div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  /* ============ Elbow chart ============ */
+  const elbowCanvas = document.getElementById('elbow-canvas');
+  const ectx = elbowCanvas.getContext('2d');
+  function drawElbow(){
+    const rect = elbowCanvas.getBoundingClientRect();
+    const edpr = window.devicePixelRatio || 1;
+    elbowCanvas.width = rect.width*edpr; elbowCanvas.height = rect.height*edpr;
+    ectx.setTransform(edpr,0,0,edpr,0,0);
+    const w = rect.width, h = rect.height;
+    const pad = {l:8,r:8,t:10,b:10};
+    ectx.clearRect(0,0,w,h);
+
+    const maxW = Math.max(...WCSS);
+    const pts = WCSS.map((v,i)=>({
+      x: pad.l + i/(WCSS.length-1)*(w-pad.l-pad.r),
+      y: pad.t + (1-v/maxW)*(h-pad.t-pad.b)
+    }));
+
+    ectx.strokeStyle = '#f2b134';
+    ectx.lineWidth = 2;
+    ectx.beginPath();
+    pts.forEach((p,i)=> i===0 ? ectx.moveTo(p.x,p.y) : ectx.lineTo(p.x,p.y));
+    ectx.stroke();
+
+    pts.forEach((p,i)=>{
+      const isFive = (i===4);
+      ectx.fillStyle = isFive ? '#f2b134' : '#6f5f85';
+      ectx.beginPath();
+      ectx.arc(p.x, p.y, isFive?4.5:2.5, 0, Math.PI*2);
+      ectx.fill();
+      if(isFive){
+        ectx.strokeStyle = 'rgba(242,177,52,0.4)';
+        ectx.lineWidth = 1;
+        ectx.beginPath();
+        ectx.moveTo(p.x, p.y); ectx.lineTo(p.x, h-pad.b);
+        ectx.stroke();
+        ectx.fillStyle = '#b3a2c7';
+        ectx.font = '10.5px IBM Plex Mono, monospace';
+        ectx.fillText('k=5', p.x+6, h-14);
+      }
+    });
+  }
+  drawElbow();
+  window.addEventListener('resize', drawElbow);
+
+})();
+</script>
+
+</body>
+</html>
